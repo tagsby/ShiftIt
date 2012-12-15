@@ -1,16 +1,16 @@
 /*
- Copyright (c) 2010-2011 Filip Krikava
-
+ Copyright (c) 2010 Filip Krikava
+ 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
  furnished to do so, subject to the following conditions:
-
+ 
  The above copyright notice and this permission notice shall be included in
  all copies or substantial portions of the Software.
-
+ 
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -19,13 +19,11 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
  */
- 
+
 #import <ShortcutRecorder/SRCommon.h>
-#import <objc/message.h>
 
 #import "FMTHotKeyManager.h"
 #import "FMTDefines.h"
-#import "GTMLogger.h"
 
 @interface FMTHotKey (Private)
 
@@ -99,7 +97,7 @@
 
 static NSMutableDictionary *allHotKeys;
 
-static inline OSStatus hotKeyHandler(EventHandlerCallRef inHandlerCallRef,EventRef inEvent,
+OSStatus hotKeyHandler(EventHandlerCallRef inHandlerCallRef,EventRef inEvent,
 					   void *userData)
 {
 	EventHotKeyID hotKeyID;
@@ -149,10 +147,10 @@ SINGLETON_BOILERPLATE(FMTHotKeyManager, sharedHotKeyManager);
 - (void)unregisterHotKey:(FMTHotKey *)hotKey {
 	FMTAssertNotNil(hotKey);
 	
-	GTMLoggerDebug(@"Unregistering hotKey %@", hotKey);
+	FMTDevLog(@"Unregistering hotKey %@", hotKey);
 	
 	// search for the registration
-	TWHotKeyRegistartion *hotKeyReg = nil;
+	TWHotKeyRegistartion *hotKeyReg;
 	for (TWHotKeyRegistartion *e in [allHotKeys allValues]) {
 		if ([hotKey isEqualTo:[e hotKey]]) {
 			hotKeyReg = e;
@@ -164,7 +162,7 @@ SINGLETON_BOILERPLATE(FMTHotKeyManager, sharedHotKeyManager);
 		UnregisterEventHotKey([hotKeyReg ref]);
 	} else {
 		// no registration found
-		GTMLoggerDebug(@"Unable to unregister hotKey: %@ - it has not been registered by this HotKeyManager", hotKey);
+		FMTDevLog(@"Unable to unregister hotKey: %@ - it has not been registered by this HotKeyManager", hotKey);
 	}
 
 }
@@ -175,7 +173,7 @@ SINGLETON_BOILERPLATE(FMTHotKeyManager, sharedHotKeyManager);
 	FMTAssertNotNil(handler);
 	FMTAssertNotNil(provider);
 	
-	GTMLoggerDebug(@"Registering hotKey %@", hotKey);
+	FMTDevLog(@"Registering hotKey %@", hotKey);
 
 	EventHotKeyID hotKeyID;
 	// TODO: extract
@@ -188,16 +186,16 @@ SINGLETON_BOILERPLATE(FMTHotKeyManager, sharedHotKeyManager);
 						GetApplicationEventTarget(), 0, &hotKeyRef);
 	
 	if (!hotKeyRef) {
-		GTMLoggerError(@"Unable to register hotKey: %@", hotKey);
+		NSLog(@"Unable to register hotKey: %@", hotKey);
 		return;
 	}
 	
 	// safe
-	TWHotKeyRegistartion *hotKeyReg = [[[TWHotKeyRegistartion alloc] initWithHotKey:hotKey
-                                                                               handler:handler
-                                                                              provider:provider
-                                                                              userData:userData
-                                                                                   ref:hotKeyRef] autorelease];
+	TWHotKeyRegistartion *hotKeyReg = [[TWHotKeyRegistartion alloc] initWithHotKey:hotKey 
+																		   handler:handler 
+																		  provider:provider
+																		  userData:userData
+																			   ref:hotKeyRef];
 	
 	[allHotKeys setObject:hotKeyReg forKey:[NSNumber numberWithInt:hotKeyID.id]];	
 }

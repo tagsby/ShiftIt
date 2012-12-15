@@ -1,6 +1,6 @@
 /*
- ShiftIt: Window Organizer for OSX
- Copyright (c) 2010-2011 Filip Krikava
+ ShiftIt: Resize windows with Hotkeys
+ Copyright (C) 2010  Aravind
  
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -18,13 +18,11 @@
  */
 
 #import "PreferencesWindowController.h"
-#import "ShiftItApp.h"
+#import "ShiftIt.h"
+#import "ShiftItAction.h"
 #import "FMTLoginItems.h"
 #import "FMTDefines.h"
 #import "FMTUtils.h"
-#import "FMTNSDictionary+Extras.h"
-#import "FMTNSDate+Extras.h"
-#import "GTMLogger.h"
 
 NSString *const kKeyCodePrefKeySuffix = @"KeyCode";
 NSString *const kModifiersPrefKeySuffix = @"Modifiers";
@@ -36,11 +34,11 @@ NSString *const kActionIdentifierKey = @"kActionIdentifierKey";
 NSString *const kHotKeyKeyCodeKey = @"kHotKeyKeyCodeKey";
 NSString *const kHotKeyModifiersKey = @"kHotKeyModifiersKey";
 
-NSString *const kShiftItGithubIssueURL = @"https://github.com/fikovnik/ShiftIt/issues";
+NSInteger const kSISRUITagPrefix = 1000;
 
 NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 
-@interface PreferencesWindowController(Private) 
+@interface PreferencesWindowController(Private)
 
 - (void)windowMainStatusChanged_:(NSNotification *)notification;
 
@@ -50,21 +48,13 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 @implementation PreferencesWindowController
 
 @dynamic shouldStartAtLogin;
-@dynamic debugLogging;
-@synthesize debugLoggingFile = debugLoggingFile_;
 
 -(id)init{
     if (![super initWithWindowNibName:@"PreferencesWindow"]) {
 		return nil;
     }
-    
+	
     return self;
-}
-
--(void)dealloc{
-    [hotKeyControls_ release];
-    
-	[super dealloc];
 }
 
 -(BOOL)acceptsFirstResponder{
@@ -73,57 +63,18 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 
 -(void)awakeFromNib {
     [tabView_ selectTabViewItemAtIndex:0];
-    
+
 	NSString *versionString = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleVersion"];
 	[versionLabel_ setStringValue:versionString];
-    
+
 	NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
 	[notificationCenter addObserver:self selector:@selector(windowMainStatusChanged_:) name:NSWindowDidResignMainNotification object:[self window]];
 	[notificationCenter addObserver:self selector:@selector(windowMainStatusChanged_:) name:NSWindowDidBecomeMainNotification object:[self window]];
 	
-    // no debug logging by default
-    [self setDebugLoggingFile:@""];
-    
-    // This is just temporary here - till new version
-    NSArray *controls = [NSArray arrayWithObjects:srLeft_, 
-                         srBottom_,
-                         srTop_, 
-                         srRight_, 
-                         srTL_, 
-                         srTR_, 
-                         srBR_, 
-                         srBL_, 
-                         srCenter_, 
-                         srZoom_, 
-                         srMaximize_, 
-                         srFullScreen_, 
-                         srIncrease_,
-                         srReduce_,
-                         srNextScreen_,
-                         nil];
-    NSArray *keys = [NSArray arrayWithObjects:@"left", 
-                     @"bottom",
-                     @"top", 
-                     @"right",
-                     @"tl", 
-                     @"tr",
-                     @"br", 
-                     @"bl",
-                     @"center",
-                     @"zoom",
-                     @"maximize",
-                     @"fullScreen",
-                     @"increase",
-                     @"reduce", 
-                     @"nextscreen", 
-                     nil];
-    
-    hotKeyControls_ = [[NSDictionary dictionaryWithObjects:controls forKeys:keys] retain];
-    
 	[self updateRecorderCombos];
 }
 
--(IBAction)showPreferences:(id)sender {
+-(IBAction)showPreferences:(id)sender{
     [[self window] center];
     [NSApp activateIgnoringOtherApps:YES];
     [[self window] makeKeyAndOrderFront:sender];    
@@ -131,16 +82,16 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 
 -(IBAction)revertDefaults:(id)sender {
 	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    
+
 	NSString *path = FMTGetMainBundleResourcePath(kShiftItUserDefaults, @"plist");
 	NSDictionary *initialDefaults = [NSDictionary dictionaryWithContentsOfFile:path];
 	[defaults registerDefaults:initialDefaults];
-    
+
 	for (ShiftItAction *action in [allShiftActions allValues]) {
 		NSString *identifier = [action identifier];
 		
 		NSNumber *n = nil;
-        
+
 		n = [initialDefaults objectForKey:KeyCodePrefKey(identifier)];
 		[defaults setInteger:[n integerValue] forKey:KeyCodePrefKey(identifier)];
 		
@@ -156,49 +107,6 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 	[self updateRecorderCombos];
 }
 
--(IBAction)reportIssue:(id)sender {
-    NSInteger ret = NSRunAlertPanel(@"Before you report new issue",
-            @"Please make sure that you look at the other issues before you submit a new one.",
-            @"Take me to github.com", NULL, NULL);
-    
-    if (ret == NSAlertDefaultReturn) {
-        [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:kShiftItGithubIssueURL]];
-    }
-}
-
--(IBAction)revealLogFileInFinder:(id)sender {
-    if (debugLoggingFile_) {
-        NSURL *fileURL = [NSURL fileURLWithPath:debugLoggingFile_];
-        [[NSWorkspace sharedWorkspace] selectFile:[fileURL path] inFileViewerRootedAtPath:nil];
-    }
-}
-
-
-#pragma mark debugLogging dynamic property methods
-
-- (BOOL) debugLogging {
-    return !([[GTMLogger sharedLogger] writer] == [NSFileHandle fileHandleWithStandardOutput]);
-}
-
-- (void)setDebugLogging:(BOOL)flag {
-    id<GTMLogWriter> writer = nil; 
-
-    if (flag) {
-        NSString *logFile = FMTStr(@"%@/ShiftIt-debug-log-%@.txt", 
-                                   NSTemporaryDirectory(), 
-                                   [[NSDate date] stringWithFormat:@"YYYYMMDD-HHmm"]);
-        
-        FMTLogInfo(@"Enabling debug logging into file: %@", logFile);
-        writer = [NSFileHandle fileHandleForLoggingAtPath:logFile mode:0644];
-        [self setDebugLoggingFile:logFile];
-    } else {
-        FMTLogInfo(@"Enabling debug logging into stdout");
-        writer = [NSFileHandle fileHandleWithStandardOutput];
-        [self setDebugLoggingFile:@""];
-    }
-    
-    [[GTMLogger sharedLogger] setWriter:writer]; 
-}
 
 #pragma mark shouldStartAtLogin dynamic property methods
 
@@ -208,8 +116,8 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 }
 
 - (void)setShouldStartAtLogin:(BOOL)flag {
-	FMTLogDebug(@"ShiftIt should start at login: %d", flag);
-    
+	FMTDevLog(@"ShiftIt should start at login: %d", flag);
+
 	NSString *path = [[NSBundle mainBundle] bundlePath];
 	[[FMTLoginItems sharedSessionLoginItems] toggleApplicationInLoginItemsWithPath:path enabled:flag];
 }
@@ -217,17 +125,21 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 #pragma mark Shortcut Recorder methods
 
 - (void)shortcutRecorder:(SRRecorderControl *)recorder keyComboDidChange:(KeyCombo)newKeyCombo{
-    NSString *identifier = [hotKeyControls_ keyForObject:recorder];
-    FMTAssertNotNil(identifier);
+	NSInteger tag = [recorder tag] - kSISRUITagPrefix;
 	
-	ShiftItAction *action = [allShiftActions objectForKey:identifier];
+	ShiftItAction *action = nil;
+	for (action in [allShiftActions allValues]) {
+		if ([action uiTag] == tag) {
+			break;
+		}
+	}
 	FMTAssertNotNil(action);
 	
-	FMTLogDebug(@"ShiftIt action %@ hotkey changed: ", [action identifier]);
+	FMTDevLog(@"ShiftIt action %@ hotkey changed: ", [action identifier]);
 	
 	NSMutableDictionary *userInfo = [NSMutableDictionary dictionaryWithCapacity:3];
 	[userInfo setObject:[action identifier] forKey:kActionIdentifierKey];
-	[userInfo setObject:[NSNumber numberWithInteger:newKeyCombo.code] forKey:kHotKeyKeyCodeKey];
+	[userInfo setObject:[NSNumber numberWithInt:newKeyCombo.code] forKey:kHotKeyKeyCodeKey];
 	[userInfo setObject:[NSNumber numberWithLong:newKeyCombo.flags] forKey:kHotKeyModifiersKey];
 	
 	[[NSNotificationCenter defaultCenter] postNotificationName:kHotKeyChangedNotification object:self userInfo:userInfo];
@@ -239,12 +151,12 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 	FMTAssertNotNil(hotKeysView);
 	
 	NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    
+
 	for (ShiftItAction *action in [allShiftActions allValues]) {
-		NSString *identifier = [action identifier];
-		SRRecorderControl *recorder = [hotKeyControls_ objectForKey:identifier];
+		SRRecorderControl *recorder = [hotKeysView viewWithTag:kSISRUITagPrefix+[action uiTag]];
 		FMTAssertNotNil(recorder);
-        
+
+		NSString *identifier = [action identifier];
 		
 		KeyCombo combo;
 		combo.code = [defaults integerForKey:KeyCodePrefKey(identifier)];
@@ -253,10 +165,13 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 	}	
 }
 
+-(void)dealloc{
+	[super dealloc];
+}
+
 #pragma mark TabView delegate methods
 
 - (void)tabView:(NSTabView *)tabView didSelectTabViewItem:(NSTabViewItem *)tabViewItem {
-    // TODO: why not to use the tabViewItem
 	if ([selectedTabIdentifier_ isEqualTo:kHotKeysTabViewItemIdentifier]) {
 		[[NSNotificationCenter defaultCenter] postNotificationName:kDidStartEditingHotKeysPrefNotification object:nil];
 	} else {
@@ -268,10 +183,10 @@ NSString *const kHotKeysTabViewItemIdentifier = @"hotKeys";
 
 - (void)windowMainStatusChanged_:(NSNotification *)notification {
 	NSString *name = [notification name];
-    
-	if ([name isEqualToString:NSWindowDidBecomeMainNotification] && [selectedTabIdentifier_ isEqualToString:kHotKeysTabViewItemIdentifier]) {
+
+	if ([name isEqualTo:NSWindowDidBecomeMainNotification] && [selectedTabIdentifier_ isEqualTo:kHotKeysTabViewItemIdentifier]) {
 		[[NSNotificationCenter defaultCenter] postNotificationName:kDidStartEditingHotKeysPrefNotification object:nil];
-	} else if ([name isEqualToString:NSWindowDidResignMainNotification]) {
+	} else if ([name isEqualTo:NSWindowDidResignMainNotification]) {
 		[[NSNotificationCenter defaultCenter] postNotificationName:kDidFinishEditingHotKeysPrefNotification object:nil];
 	}
 }
